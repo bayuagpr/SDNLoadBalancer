@@ -63,8 +63,10 @@ class LoadBalancer(app_manager.RyuApp):
         self._client_ip_mac_mapping = dict()
         self._mac_port_mapping      = dict()
         self._server_ip_mac_mapping = dict()
+        self.total_connection = {} # IP -> total connection
         for ip_address in self._servers_ip:
             self._server_ip_mac_mapping[ip_address] = None
+            self.total_connection[ip_address] = 0
 
         logger.critical("Switch is now working in **{mode}** mode".format(
             mode="PROACTIVE" if _PROACTIVE_MODE else "REACTIVE"
@@ -188,14 +190,21 @@ class LoadBalancer(app_manager.RyuApp):
         )        
 
     def __get_server_by_type(self, *, service_type) -> "ip_address":
-        '''
-        The function that chooses the server by the service type requested
-        Can be rewriten or extended to use other algorithms (instead of
-        randomly choosing one)
-        '''
-        # server selection algorithm implemented below 
-        # RANDOMLY CHOOSE A SERVER
-        return random.choice(self._servers_ip)
+        """
+        Select server with least connections
+        """
+        if len(self.total_connection) == 0:
+            return self._servers_ip[0]
+        ipserver = self._servers_ip[0]
+        totalconns = self.total_connection[ipserver]
+
+        for x in self.total_connection:
+            if self.total_connection[x] < totalconns:
+                ipserver = x
+                totalconns = self.total_connection[x]
+        logger.info("Best available server: %s" % ipserver)
+        self.total_connection[ipserver] += 1
+        return ipserver
            
     def send_proxied_arp_response(self):
         # relay arp response to clients or servers
